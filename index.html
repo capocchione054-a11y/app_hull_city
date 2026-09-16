@@ -198,13 +198,25 @@
   .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;}
   .gallery .item{
     border-radius:4px;overflow:hidden;border:1px solid var(--line);
-    background:#000;aspect-ratio:1/1;position:relative;
+    background:#000;aspect-ratio:1/1;position:relative;cursor:pointer;
   }
-  .gallery img,.gallery video{width:100%;height:100%;object-fit:cover;display:block;}
+  .gallery img,.gallery video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;}
   .gallery .item.video::after{
     content:"▶";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-    font-size:20px;color:var(--chalk);background:rgba(0,0,0,0.25);pointer-events:none;
+    font-size:22px;color:var(--chalk);background:rgba(0,0,0,0.3);
   }
+  #lightbox{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:1000;
+    align-items:center;justify-content:center;padding:24px;flex-direction:column;gap:12px;
+  }
+  #lightbox.show{display:flex;}
+  #lightbox img,#lightbox video{max-width:100%;max-height:80vh;border-radius:4px;}
+  #lightbox .lb-caption{color:var(--chalk-dim);font-size:13.5px;text-align:center;max-width:500px;}
+  #lightbox .lb-close{
+    position:absolute;top:18px;right:22px;background:none;border:none;color:var(--chalk);
+    font-size:28px;line-height:1;padding:6px 10px;
+  }
+  #lightbox .lb-close:hover{color:var(--gold);}
   .caption{font-size:11.5px;color:var(--chalk-dim);padding:4px 2px 0;}
 
   /* ---------- classifica marcatori ---------- */
@@ -282,6 +294,11 @@
 
 <div id="app"><main id="main"></main></div>
 <div id="toast"></div>
+<div id="lightbox">
+  <button class="lb-close" id="lbClose">&times;</button>
+  <div id="lbContent"></div>
+  <div class="lb-caption" id="lbCaption"></div>
+</div>
 
 <script>
 /* ======================= CONFIGURAZIONE — modifica qui ======================= */
@@ -400,6 +417,30 @@ function buildPitchHTML(titolari){
 }
 
 
+function openLightbox(index){
+  const m = (window.currentMedia||[])[index];
+  if(!m) return;
+  const content = document.getElementById('lbContent');
+  if(m.tipo === 'video'){
+    content.innerHTML = `<video src="${m.url}" controls autoplay playsinline></video>`;
+  } else {
+    content.innerHTML = `<img src="${m.url}" alt="${escapeHtml(m.didascalia||'')}">`;
+  }
+  document.getElementById('lbCaption').textContent = m.didascalia || '';
+  document.getElementById('lightbox').classList.add('show');
+}
+function closeLightbox(){
+  document.getElementById('lightbox').classList.remove('show');
+  document.getElementById('lbContent').innerHTML = '';
+}
+document.getElementById('lbClose').addEventListener('click', closeLightbox);
+document.getElementById('lightbox').addEventListener('click', e=>{
+  if(e.target.id === 'lightbox') closeLightbox();
+});
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape') closeLightbox();
+});
+
 async function renderPartiteList(){
   main.innerHTML = '<div class="empty">Caricamento partite…</div>';
   const {data, error} = await sb.from('partite').select('*').order('data',{ascending:false});
@@ -476,13 +517,14 @@ async function renderPartitaDetail(id){
 
   if(media && media.length){
     html += `<div class="section-title">FOTO & VIDEO</div><div class="gallery">`;
-    html += media.map(m=>{
+    html += media.map((m,i)=>{
       if(m.tipo === 'video'){
-        return `<div class="item video"><video src="${m.url}" muted></video></div>`;
+        return `<div class="item video" onclick="openLightbox(${i})"><video src="${m.url}" muted></video></div>`;
       }
-      return `<div class="item"><img src="${m.url}" loading="lazy" alt="${escapeHtml(m.didascalia||'')}"></div>`;
+      return `<div class="item" onclick="openLightbox(${i})"><img src="${m.url}" loading="lazy" alt="${escapeHtml(m.didascalia||'')}"></div>`;
     }).join('');
     html += `</div>`;
+    window.currentMedia = media;
   }
 
   main.innerHTML = html;
@@ -772,3 +814,4 @@ async function renderAdminMatchList(){
 </script>
 </body>
 </html>
+
