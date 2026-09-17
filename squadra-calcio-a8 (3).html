@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Squadra — Partite e Risultati</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  /* ============ CONFIGURAZIONE VISIBILE NEL CSS: cambia qui i colori se vuoi ============ */
+  :root{
+    --pitch-dark:#0A0A0A;
+    --pitch:#161616;
+    --pitch-light:#262626;
+    --line:#3A3A3A;
+    --chalk:#F5F3EC;
+    --chalk-dim:#A8A49A;
+    --gold:#F5A300;
+    --gold-dim:#8A5E00;
+    --red:#C1432E;
+    --card:#141414;
+    --radius:2px;
+    --serif-line: 1px solid rgba(245,163,0,0.15);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--pitch-dark);
+    color:var(--chalk);
+    font-family:'Inter',sans-serif;
+    line-height:1.5;
+    min-height:100vh;
+    background-image:
+      repeating-linear-gradient(115deg, rgba(245,163,0,0.05) 0px, rgba(245,163,0,0.05) 26px, transparent 26px, transparent 70px),
+      radial-gradient(circle at 100% 0%, rgba(245,163,0,0.08), transparent 45%);
+  }
+  h1,h2,h3,.display{
+    font-family:'Oswald',sans-serif;
+    font-weight:600;
+    letter-spacing:0.01em;
+    margin:0;
+  }
+  a{color:inherit;}
+  button{font-family:'Inter',sans-serif;cursor:pointer;}
+  ::selection{background:var(--gold);color:var(--pitch-dark);}
+
+  /* ---------- layout ---------- */
+  #app{max-width:760px;margin:0 auto;padding:0 20px 80px;}
+  header.top{
+    padding:36px 20px 0;
+    max-width:760px;margin:0 auto;
+    display:flex;justify-content:space-between;align-items:flex-end;
+    gap:16px;flex-wrap:wrap;
+  }
+  .stripe-bar{
+    height:6px;margin-top:18px;
+    background:repeating-linear-gradient(115deg, var(--gold) 0px, var(--gold) 22px, var(--pitch-dark) 22px, var(--pitch-dark) 44px);
+  }
+  .brand{display:flex;flex-direction:column;gap:2px;}
+  .brand .kicker{
+    font-size:12.5px;color:var(--gold);letter-spacing:0.06em;
+  }
+  .brand h1{font-size:30px;color:var(--chalk);}
+
+  nav.tabs{
+    display:flex;gap:2px;
+    margin:28px auto 0;
+    max-width:760px;padding:0 20px;
+    border-bottom:var(--serif-line);
+  }
+  nav.tabs button{
+    background:none;border:none;color:var(--chalk-dim);
+    font-size:14.5px;padding:12px 4px;margin-right:22px;
+    border-bottom:2px solid transparent;
+    transition:color .15s ease, border-color .15s ease;
+  }
+  nav.tabs button:hover{color:var(--chalk);}
+  nav.tabs button.active{color:var(--gold);border-bottom-color:var(--gold);}
+
+  main{padding-top:28px;}
+
+  /* ---------- reusable ---------- */
+  .muted{color:var(--chalk-dim);}
+  .empty{
+    padding:40px 0;text-align:center;color:var(--chalk-dim);font-size:14.5px;
+  }
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    background:var(--pitch-light);color:var(--chalk);
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:9px 16px;font-size:14px;font-weight:500;
+  }
+  .btn:hover{background:#357a54;}
+  .btn.gold{background:var(--gold);color:var(--pitch-dark);border-color:var(--gold);font-weight:600;}
+  .btn.gold:hover{background:#eec568;}
+  .btn.ghost{background:transparent;border-color:var(--line);color:var(--chalk-dim);}
+  .btn.ghost:hover{color:var(--chalk);border-color:var(--chalk-dim);}
+  .btn.danger{background:transparent;border-color:var(--red);color:var(--red);}
+  .btn.danger:hover{background:rgba(180,67,46,0.15);}
+  .btn:disabled{opacity:0.5;cursor:not-allowed;}
+
+  input,select,textarea{
+    width:100%;background:var(--pitch-dark);border:1px solid var(--line);
+    color:var(--chalk);border-radius:var(--radius);padding:9px 10px;
+    font-family:'Inter',sans-serif;font-size:14.5px;
+  }
+  input:focus,select:focus,textarea:focus{outline:1px solid var(--gold);border-color:var(--gold);}
+  label{font-size:12.5px;color:var(--chalk-dim);display:block;margin-bottom:5px;margin-top:14px;}
+  label:first-child{margin-top:0;}
+  fieldset{border:none;padding:0;margin:0;}
+
+  .field-row{display:flex;gap:12px;}
+  .field-row > div{flex:1;}
+
+  /* ---------- match list ---------- */
+  .match-card{
+    display:flex;align-items:center;gap:16px;
+    padding:16px 4px;border-bottom:var(--serif-line);
+    cursor:pointer;
+  }
+  .match-card:hover .opp{color:var(--gold);}
+  .match-card .date{
+    font-size:12px;color:var(--chalk-dim);width:70px;flex-shrink:0;
+    line-height:1.3;
+  }
+  .match-card .info{flex:1;min-width:0;}
+  .match-card .opp{font-size:16.5px;font-weight:500;transition:color .12s ease;}
+  .match-card .meta{font-size:12px;color:var(--chalk-dim);margin-top:2px;}
+  .score{
+    font-family:'Oswald',sans-serif;font-size:22px;font-weight:600;
+    display:flex;align-items:center;gap:8px;flex-shrink:0;
+    border-left:3px solid transparent;padding-left:12px;
+  }
+  .score.win{border-color:var(--gold);}
+  .score.draw{border-color:var(--chalk-dim);}
+  .score.loss{border-color:var(--red);}
+
+  /* ---------- match detail ---------- */
+  .back-link{font-size:13.5px;color:var(--chalk-dim);display:inline-block;margin-bottom:18px;}
+  .back-link:hover{color:var(--gold);}
+  .detail-head{
+    display:flex;justify-content:space-between;align-items:flex-start;
+    padding-bottom:20px;border-bottom:var(--serif-line);flex-wrap:wrap;gap:14px;
+  }
+  .detail-score{font-family:'Oswald',sans-serif;font-size:42px;font-weight:600;line-height:1;}
+  .section-title{
+    font-size:13px;color:var(--gold);letter-spacing:0.04em;
+    margin:32px 0 14px;
+  }
+  .scorer-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(244,241,232,0.06);font-size:14.5px;}
+  .scorer-row .n{color:var(--gold);font-family:'Oswald',sans-serif;margin-right:8px;}
+
+  .pitch-box{
+    position:relative;
+    background:
+      linear-gradient(rgba(0,0,0,0.08) 1px, transparent 1px),
+      repeating-linear-gradient(180deg, #1E5B33 0px, #1E5B33 44px, #1A4F2C 44px, #1A4F2C 88px);
+    border:1px solid rgba(245,163,0,0.35);border-radius:8px;
+    aspect-ratio:3/4; max-width:340px; margin:0 auto;
+  }
+  .pitch-mark{position:absolute;border-color:rgba(255,255,255,0.4);pointer-events:none;}
+  .pitch-halfway{left:6%;right:6%;top:50%;height:0;border-top:1px solid rgba(255,255,255,0.4);}
+  .pitch-circle{left:50%;top:50%;width:22%;aspect-ratio:1/1;border:1px solid rgba(255,255,255,0.4);border-radius:50%;transform:translate(-50%,-50%);}
+  .pitch-spot{left:50%;top:50%;width:5px;height:5px;background:rgba(255,255,255,0.5);border-radius:50%;transform:translate(-50%,-50%);}
+  .pitch-box-top{left:22%;right:22%;top:0;height:13%;border:1px solid rgba(255,255,255,0.4);border-top:none;}
+  .pitch-box-bottom{left:22%;right:22%;bottom:0;height:13%;border:1px solid rgba(255,255,255,0.4);border-bottom:none;}
+  .pitch-arc-top{left:50%;top:0;width:16%;aspect-ratio:2/1;border:1px solid rgba(255,255,255,0.4);border-top:none;border-radius:0 0 50% 50%;transform:translateX(-50%);}
+  .pitch-arc-bottom{left:50%;bottom:0;width:16%;aspect-ratio:2/1;border:1px solid rgba(255,255,255,0.4);border-bottom:none;border-radius:50% 50% 0 0;transform:translateX(-50%);}
+
+  /* 4 fixed equal bands: attacco / centrocampo / difesa / portiere — ogni banda ha sempre lo stesso spazio, così non si mescolano mai */
+  .pitch-rows{
+    position:relative;z-index:2;height:100%;
+    display:grid;grid-template-rows:repeat(4,1fr);
+    padding:12px 8px;
+  }
+  .pitch-row{display:flex;flex-wrap:wrap;align-items:center;align-content:center;justify-content:center;gap:5px 9px;}
+  .pitch-player{display:flex;flex-direction:column;align-items:center;gap:2px;width:46px;}
+  .pitch-player .dot{
+    width:24px;height:24px;border-radius:50%;background:var(--gold);color:var(--pitch-dark);
+    display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;
+    font-weight:600;font-size:11px;border:2px solid var(--pitch-dark);box-shadow:0 1px 4px rgba(0,0,0,0.5);
+    flex-shrink:0;
+  }
+  .pitch-player .pname{
+    font-size:9px;color:#fff;text-align:center;line-height:1.15;
+    text-shadow:0 1px 3px rgba(0,0,0,0.85);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .chip{
+    background:rgba(245,163,0,0.1);border:1px solid rgba(245,163,0,0.3);
+    border-radius:20px;padding:6px 13px;font-size:13px;white-space:nowrap;color:var(--chalk);
+  }
+  .chip-list{display:flex;flex-wrap:wrap;gap:8px;}
+  .subs{margin-top:16px;font-size:13px;color:var(--chalk-dim);}
+  .chip .chip-num{color:var(--gold);font-family:'Oswald',sans-serif;margin-right:5px;}
+  .chip.chip-out{background:rgba(193,67,46,0.1);border-color:rgba(193,67,46,0.35);color:var(--chalk-dim);}
+  .chip.chip-out .chip-num{color:var(--red);}
+
+  .gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;}
+  .gallery .item{
+    border-radius:4px;overflow:hidden;border:1px solid var(--line);
+    background:#000;aspect-ratio:1/1;position:relative;cursor:pointer;
+  }
+  .gallery img,.gallery video{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none;}
+  .gallery .item.video::after{
+    content:"▶";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-size:22px;color:var(--chalk);background:rgba(0,0,0,0.3);
+  }
+  #lightbox{
+    display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:1000;
+    align-items:center;justify-content:center;padding:24px;flex-direction:column;gap:12px;
+  }
+  #lightbox.show{display:flex;}
+  #lightbox img,#lightbox video{max-width:100%;max-height:80vh;border-radius:4px;}
+  #lightbox .lb-caption{color:var(--chalk-dim);font-size:13.5px;text-align:center;max-width:500px;}
+  #lightbox .lb-close{
+    position:absolute;top:18px;right:22px;background:none;border:none;color:var(--chalk);
+    font-size:28px;line-height:1;padding:6px 10px;
+  }
+  #lightbox .lb-close:hover{color:var(--gold);}
+  .caption{font-size:11.5px;color:var(--chalk-dim);padding:4px 2px 0;}
+
+  /* ---------- classifica marcatori ---------- */
+  .scorer-table-row{
+    display:flex;align-items:center;gap:14px;padding:11px 4px;border-bottom:var(--serif-line);
+  }
+  .rank{font-family:'Oswald',sans-serif;font-size:15px;color:var(--chalk-dim);width:20px;}
+  .rank.top{color:var(--gold);}
+  .scorer-table-row .name{flex:1;font-size:15px;}
+  .scorer-table-row .goals{font-family:'Oswald',sans-serif;font-size:17px;color:var(--gold);}
+
+  /* ---------- rosa ---------- */
+  .player-row{display:flex;align-items:center;gap:14px;padding:12px 4px;border-bottom:var(--serif-line);}
+  .player-num{
+    width:32px;height:32px;border-radius:50%;border:1px solid var(--line);
+    display:flex;align-items:center;justify-content:center;font-family:'Oswald',sans-serif;
+    font-size:13px;color:var(--gold);flex-shrink:0;
+  }
+  .player-row .pname{flex:1;font-size:15px;}
+  .player-row .prole{font-size:12px;color:var(--chalk-dim);}
+  .player-row .presenze{font-size:12.5px;color:var(--gold);font-family:'Oswald',sans-serif;flex-shrink:0;}
+
+  /* ---------- admin ---------- */
+  .admin-box{
+    background:var(--card);border:1px solid var(--line);border-radius:6px;padding:22px;margin-bottom:24px;
+  }
+  .admin-box h3{font-size:16px;margin-bottom:4px;}
+  .admin-box .hint{font-size:12.5px;color:var(--chalk-dim);margin-bottom:16px;}
+  .multi-select-list{max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius);padding:4px;}
+  .ms-row{display:flex;align-items:center;gap:10px;padding:7px 8px;font-size:14px;border-bottom:1px solid rgba(244,241,232,0.05);}
+  .ms-row:last-child{border-bottom:none;}
+  .ms-row input[type=checkbox]{width:auto;}
+  .ms-row input[type=number]{width:60px;padding:5px 6px;}
+  .ms-row .lbl{flex:1;}
+
+  .admin-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px;}
+  .lock-screen{text-align:center;padding:60px 20px;}
+  .lock-screen input{max-width:260px;margin:16px auto 0;}
+  .file-warn{font-size:12px;color:var(--gold);margin-top:6px;}
+  .file-warn.big{color:var(--red);}
+  .admin-list-row{display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:var(--serif-line);font-size:14px;}
+
+  /* ---------- toast ---------- */
+  #toast{
+    position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+    background:var(--chalk);color:var(--pitch-dark);padding:11px 20px;border-radius:4px;
+    font-size:14px;font-weight:500;opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;
+    z-index:999;box-shadow:0 6px 20px rgba(0,0,0,0.35);
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);}
+  #toast.err{background:var(--red);color:var(--chalk);}
+
+  @media (max-width:480px){
+    .brand h1{font-size:24px;}
+    .detail-score{font-size:32px;}
+    nav.tabs button{margin-right:14px;font-size:13.5px;}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand">
+    <span class="kicker" id="teamKicker">CALCIO A 8</span>
+    <h1 id="teamName">La Squadra</h1>
+  </div>
+</header>
+<div class="stripe-bar"></div>
+
+<nav class="tabs" id="tabs">
+  <button data-tab="partite" class="active">Partite</button>
+  <button data-tab="marcatori">Marcatori</button>
+  <button data-tab="rosa">Rosa</button>
+  <button data-tab="admin">Admin</button>
+</nav>
+
+<div id="app"><main id="main"></main></div>
+<div id="toast"></div>
+<div id="lightbox">
+  <button class="lb-close" id="lbClose">&times;</button>
+  <div id="lbContent"></div>
+  <div class="lb-caption" id="lbCaption"></div>
+</div>
+
+<script>
+/* ======================= CONFIGURAZIONE — modifica qui ======================= */
+const CONFIG = {
+  SUPABASE_URL: "https://oeaumrqjefiaynnkaqfy.supabase.co",
+  SUPABASE_ANON_KEY: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lYXVtcnFqZWZpYXlubmthcWZ5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk1Nzc5NTcsImV4cCI6MjEwNTE1Mzk1N30.5jXVUvvRdzPi1bfn6p4ij3AC72cGyrLIOLUJm19e1NA",
+  // Cambia questa password prima di condividere il link della tua app!
+  ADMIN_PASSWORD: "Napoli1926gio",
+  TEAM_NAME: "Hull City",
+  MEDIA_BUCKET: "media",
+  // soglie di avviso (non bloccano il caricamento)
+  PHOTO_WARN_MB: 5,
+  VIDEO_WARN_MB: 50
+};
+
+document.getElementById('teamName').textContent = CONFIG.TEAM_NAME;
+
+const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+
+/* ======================= stato / utils ======================= */
+let giocatoriCache = null;
+
+function escapeHtml(s){
+  if(s===null||s===undefined) return '';
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function formatData(d){
+  const dt = new Date(d+'T00:00:00');
+  return dt.toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'});
+}
+function formatDataShort(d){
+  const dt = new Date(d+'T00:00:00');
+  return dt.toLocaleDateString('it-IT',{day:'2-digit',month:'short'});
+}
+function toast(msg, isErr){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = isErr ? 'show err' : 'show';
+  clearTimeout(toast._h);
+  toast._h = setTimeout(()=>t.className='', 2600);
+}
+async function getGiocatori(force){
+  if(giocatoriCache && !force) return giocatoriCache;
+  const {data, error} = await sb.from('giocatori').select('*').order('numero_maglia',{ascending:true});
+  if(error){ toast('Errore nel caricare i giocatori','err'); return []; }
+  giocatoriCache = data || [];
+  return giocatoriCache;
+}
+function isAdmin(){ return sessionStorage.getItem('isAdmin') === 'true'; }
+
+/* ======================= routing ======================= */
+const main = document.getElementById('main');
+const tabButtons = document.querySelectorAll('nav.tabs button');
+
+function setActiveTab(tab){
+  tabButtons.forEach(b=>b.classList.toggle('active', b.dataset.tab===tab));
+}
+tabButtons.forEach(b=>{
+  b.addEventListener('click', ()=>{ location.hash = '#'+b.dataset.tab; });
+});
+window.addEventListener('hashchange', route);
+window.addEventListener('DOMContentLoaded', route);
+
+function route(){
+  const hash = location.hash.replace('#','') || 'partite';
+  if(hash.startsWith('partita/')){
+    const id = hash.split('/')[1];
+    setActiveTab('partite');
+    renderPartitaDetail(id);
+  } else if(hash === 'marcatori'){
+    setActiveTab('marcatori'); renderMarcatori();
+  } else if(hash === 'rosa'){
+    setActiveTab('rosa'); renderRosa();
+  } else if(hash === 'admin'){
+    setActiveTab('admin'); renderAdmin();
+  } else {
+    setActiveTab('partite'); renderPartiteList();
+  }
+}
+
+function classifyRuolo(ruolo){
+  const r = (ruolo||'').toLowerCase();
+  if(/portier|^por$|\bgk\b|keeper/.test(r)) return 'POR';
+  if(/difens|\bdif\b|terzino|centrale|back/.test(r)) return 'DIF';
+  if(/attacc|\batt\b|punta|forward|ala\b/.test(r)) return 'ATT';
+  if(/centroc|\bcen\b|\bcc\b|mediano|regista|mid/.test(r)) return 'CEN';
+  return 'CEN';
+}
+function playerDotHTML(f){
+  const g = f.giocatori || {};
+  return `<div class="pitch-player">
+      <div class="dot">${g.numero_maglia ?? '–'}</div>
+      <div class="pname">${escapeHtml(g.nome||'')}</div>
+    </div>`;
+}
+function buildPitchHTML(titolari){
+  const groups = {POR:[], DIF:[], CEN:[], ATT:[]};
+  titolari.forEach(f=>{ groups[classifyRuolo(f.giocatori?.ruolo)].push(f); });
+  const order = ['ATT','CEN','DIF','POR']; // attacco in alto, portiere in basso
+  const rows = order
+    .map((k,i)=> groups[k].length
+      ? `<div class="pitch-row" style="grid-row:${i+1}">${groups[k].map(playerDotHTML).join('')}</div>`
+      : '')
+    .join('');
+  return `
+    <div class="pitch-box">
+      <div class="pitch-mark pitch-box-top"></div>
+      <div class="pitch-mark pitch-arc-top"></div>
+      <div class="pitch-mark pitch-box-bottom"></div>
+      <div class="pitch-mark pitch-arc-bottom"></div>
+      <div class="pitch-mark pitch-halfway"></div>
+      <div class="pitch-mark pitch-circle"></div>
+      <div class="pitch-mark pitch-spot"></div>
+      <div class="pitch-rows">${rows}</div>
+    </div>`;
+}
+
+
+function openLightbox(index){
+  const m = (window.currentMedia||[])[index];
+  if(!m) return;
+  const content = document.getElementById('lbContent');
+  if(m.tipo === 'video'){
+    content.innerHTML = `<video src="${m.url}" controls autoplay playsinline></video>`;
+  } else {
+    content.innerHTML = `<img src="${m.url}" alt="${escapeHtml(m.didascalia||'')}">`;
+  }
+  document.getElementById('lbCaption').textContent = m.didascalia || '';
+  document.getElementById('lightbox').classList.add('show');
+}
+function closeLightbox(){
+  document.getElementById('lightbox').classList.remove('show');
+  document.getElementById('lbContent').innerHTML = '';
+}
+document.getElementById('lbClose').addEventListener('click', closeLightbox);
+document.getElementById('lightbox').addEventListener('click', e=>{
+  if(e.target.id === 'lightbox') closeLightbox();
+});
+document.addEventListener('keydown', e=>{
+  if(e.key === 'Escape') closeLightbox();
+});
+
+async function renderPartiteList(){
+  main.innerHTML = '<div class="empty">Caricamento partite…</div>';
+  const {data, error} = await sb.from('partite').select('*').order('data',{ascending:false});
+  if(error){ main.innerHTML = '<div class="empty">Errore nel caricare le partite.</div>'; return; }
+  if(!data || data.length===0){
+    main.innerHTML = '<div class="empty">Nessuna partita registrata ancora.<br>Vai su Admin per aggiungerne una.</div>';
+    return;
+  }
+  main.innerHTML = data.map(p=>{
+    const gf = p.gol_fatti ?? 0, gs = p.gol_subiti ?? 0;
+    const cls = gf>gs?'win':(gf===gs?'draw':'loss');
+    return `
+    <div class="match-card" onclick="location.hash='#partita/${p.id}'">
+      <div class="date">${formatDataShort(p.data)}<br>${new Date(p.data+'T00:00:00').getFullYear()}</div>
+      <div class="info">
+        <div class="opp">${escapeHtml(p.avversario)}</div>
+        <div class="meta">${p.casa_trasferta==='casa'?'Casa':'Trasferta'}</div>
+      </div>
+      <div class="score ${cls}">${gf} – ${gs}</div>
+    </div>`;
+  }).join('');
+}
+
+/* ======================= vista: dettaglio partita ======================= */
+async function renderPartitaDetail(id){
+  main.innerHTML = '<div class="empty">Caricamento…</div>';
+  const [{data:p, error:pErr}, {data:marcatori}, {data:formazioni}, {data:media}] = await Promise.all([
+    sb.from('partite').select('*').eq('id', id).single(),
+    sb.from('marcatori').select('gol, giocatori(nome, numero_maglia)').eq('partita_id', id),
+    sb.from('formazioni').select('titolare, stato, giocatori(nome, numero_maglia, ruolo)').eq('partita_id', id),
+    sb.from('media').select('*').eq('partita_id', id).order('created_at',{ascending:true})
+  ]);
+  if(pErr || !p){ main.innerHTML = '<div class="empty">Partita non trovata.</div>'; return; }
+
+  const gf = p.gol_fatti ?? 0, gs = p.gol_subiti ?? 0;
+  const cls = gf>gs?'win':(gf===gs?'draw':'loss');
+
+  let html = `<a class="back-link" href="#partite">← Tutte le partite</a>`;
+  html += `
+    <div class="detail-head">
+      <div>
+        <div class="muted" style="font-size:13px;margin-bottom:4px;">${formatData(p.data)} · ${p.casa_trasferta==='casa'?'Casa':'Trasferta'}</div>
+        <h2 style="font-size:22px;">${escapeHtml(p.avversario)}</h2>
+      </div>
+      <div class="detail-score" style="color:${cls==='win'?'var(--gold)':cls==='loss'?'var(--red)':'var(--chalk)'}">${gf} – ${gs}</div>
+    </div>`;
+
+  if(p.note){
+    html += `<p class="muted" style="margin-top:16px;font-size:14px;">${escapeHtml(p.note)}</p>`;
+  }
+
+  html += `<div class="section-title">MARCATORI</div>`;
+  if(marcatori && marcatori.length){
+    html += marcatori.map(m=>`
+      <div class="scorer-row">
+        <span><span class="n">${m.giocatori?.numero_maglia ?? ''}</span>${escapeHtml(m.giocatori?.nome || 'Sconosciuto')}</span>
+        <span>${m.gol} ${m.gol===1?'gol':'gol'}</span>
+      </div>`).join('');
+  } else {
+    html += `<div class="muted" style="font-size:14px;">Nessun marcatore registrato.</div>`;
+  }
+
+  html += `<div class="section-title">FORMAZIONE TITOLARE</div>`;
+  const statoOf = f => f.stato || (f.titolare ? 'titolare' : 'panchina');
+  const titolari = (formazioni||[]).filter(f=>statoOf(f)==='titolare');
+  const panchina = (formazioni||[]).filter(f=>statoOf(f)==='panchina');
+  const indisponibili = (formazioni||[]).filter(f=>statoOf(f)==='indisponibile');
+  if(titolari.length){
+    html += buildPitchHTML(titolari);
+  } else {
+    html += `<div class="muted" style="font-size:14px;">Formazione non registrata.</div>`;
+  }
+
+  if(p.allenatore){
+    html += `<div class="section-title">ALLENATORE</div>`;
+    html += `<div class="chip-list"><span class="chip">${escapeHtml(p.allenatore)}</span></div>`;
+  }
+
+  html += `<div class="section-title">PANCHINA</div>`;
+  if(panchina.length){
+    html += `<div class="chip-list">` + panchina.map(f=>`<span class="chip"><span class="chip-num">${f.giocatori?.numero_maglia ?? ''}</span>${escapeHtml(f.giocatori?.nome||'')}</span>`).join('') + `</div>`;
+  } else {
+    html += `<div class="muted" style="font-size:14px;">Nessuno in panchina.</div>`;
+  }
+
+  if(indisponibili.length){
+    html += `<div class="section-title">INDISPONIBILI</div>`;
+    html += `<div class="chip-list">` + indisponibili.map(f=>`<span class="chip chip-out"><span class="chip-num">${f.giocatori?.numero_maglia ?? ''}</span>${escapeHtml(f.giocatori?.nome||'')}</span>`).join('') + `</div>`;
+  }
+
+
+  if(media && media.length){
+    html += `<div class="section-title">FOTO & VIDEO</div><div class="gallery">`;
+    html += media.map((m,i)=>{
+      if(m.tipo === 'video'){
+        return `<div class="item video" onclick="openLightbox(${i})"><video src="${m.url}" muted></video></div>`;
+      }
+      return `<div class="item" onclick="openLightbox(${i})"><img src="${m.url}" loading="lazy" alt="${escapeHtml(m.didascalia||'')}"></div>`;
+    }).join('');
+    html += `</div>`;
+    window.currentMedia = media;
+  }
+
+  main.innerHTML = html;
+}
+
+/* ======================= vista: classifica marcatori ======================= */
+async function renderMarcatori(){
+  main.innerHTML = '<div class="empty">Caricamento…</div>';
+  const {data, error} = await sb.from('marcatori').select('gol, giocatori(id, nome, numero_maglia)');
+  if(error){ main.innerHTML = '<div class="empty">Errore nel caricare i marcatori.</div>'; return; }
+  if(!data || data.length===0){
+    main.innerHTML = '<div class="empty">Ancora nessun gol registrato.</div>'; return;
+  }
+  const totals = {};
+  data.forEach(r=>{
+    if(!r.giocatori) return;
+    const id = r.giocatori.id;
+    if(!totals[id]) totals[id] = {nome:r.giocatori.nome, numero:r.giocatori.numero_maglia, gol:0};
+    totals[id].gol += (r.gol||0);
+  });
+  const ranked = Object.values(totals).sort((a,b)=>b.gol-a.gol);
+  main.innerHTML = `<h2 style="font-size:20px;margin-bottom:16px;">Classifica marcatori</h2>` +
+    ranked.map((r,i)=>`
+      <div class="scorer-table-row">
+        <span class="rank ${i===0?'top':''}">${i+1}</span>
+        <span class="name">${escapeHtml(r.nome)}</span>
+        <span class="goals">${r.gol}</span>
+      </div>`).join('');
+}
+
+/* ======================= vista: rosa ======================= */
+async function renderRosa(){
+  main.innerHTML = '<div class="empty">Caricamento…</div>';
+  const giocatori = await getGiocatori(true);
+  if(!giocatori.length){
+    main.innerHTML = '<div class="empty">Nessun giocatore in rosa ancora.<br>Aggiungili da Admin.</div>'; return;
+  }
+  const {data: presenzeData} = await sb.from('formazioni').select('giocatore_id, stato, titolare');
+  const presenze = {};
+  (presenzeData||[]).forEach(r=>{
+    const stato = r.stato || (r.titolare ? 'titolare' : 'panchina');
+    if(stato === 'titolare' || stato === 'panchina'){
+      presenze[r.giocatore_id] = (presenze[r.giocatore_id] || 0) + 1;
+    }
+  });
+  main.innerHTML = `<h2 style="font-size:20px;margin-bottom:16px;">Rosa</h2>` +
+    giocatori.map(g=>`
+      <div class="player-row">
+        <div class="player-num">${g.numero_maglia ?? '–'}</div>
+        <div class="pname">${escapeHtml(g.nome)}</div>
+        <div class="prole">${escapeHtml(g.ruolo||'')}</div>
+        <div class="presenze">${presenze[g.id] || 0} presenze</div>
+      </div>`).join('');
+}
+
+/* ======================= vista: admin ======================= */
+async function renderAdmin(){
+  if(!isAdmin()){
+    main.innerHTML = `
+      <div class="lock-screen">
+        <h2 style="font-size:20px;">Area riservata</h2>
+        <p class="muted" style="font-size:14px;margin-top:8px;">Inserisci la password per aggiungere partite, giocatori e media.</p>
+        <input type="password" id="adminPw" placeholder="Password" style="margin-top:16px;">
+        <div style="margin-top:14px;">
+          <button class="btn gold" id="adminPwBtn">Entra</button>
+        </div>
+      </div>`;
+    document.getElementById('adminPwBtn').onclick = ()=>{
+      const val = document.getElementById('adminPw').value;
+      if(val === CONFIG.ADMIN_PASSWORD){
+        sessionStorage.setItem('isAdmin','true');
+        renderAdmin();
+      } else {
+        toast('Password errata', true);
+      }
+    };
+    document.getElementById('adminPw').addEventListener('keydown', e=>{
+      if(e.key==='Enter') document.getElementById('adminPwBtn').click();
+    });
+    return;
+  }
+
+  main.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+      <h2 style="font-size:20px;">Pannello admin</h2>
+      <button class="btn ghost" id="logoutBtn">Esci</button>
+    </div>
+    <div id="adminAddPlayer" class="admin-box"></div>
+    <div id="adminAddMatch" class="admin-box"></div>
+    <div id="adminEditFormazione" class="admin-box"></div>
+    <div id="adminMedia" class="admin-box"></div>
+    <div id="adminMatchList" class="admin-box"></div>`;
+
+  document.getElementById('logoutBtn').onclick = ()=>{ sessionStorage.removeItem('isAdmin'); renderAdmin(); };
+
+  renderAdminAddPlayer();
+  renderAdminAddMatch();
+  renderAdminEditFormazione();
+  renderAdminMediaUpload();
+  renderAdminMatchList();
+}
+
+function renderAdminAddPlayer(){
+  const box = document.getElementById('adminAddPlayer');
+  box.innerHTML = `
+    <h3>Aggiungi giocatore</h3>
+    <div class="hint">Aggiungi un giocatore alla rosa una sola volta.</div>
+    <div class="field-row">
+      <div><label>Nome</label><input id="pNome" placeholder="Nome e cognome"></div>
+      <div><label>Numero maglia</label><input id="pNum" type="number" min="1" max="99"></div>
+    </div>
+    <label>Ruolo</label>
+    <input id="pRuolo" placeholder="es. Portiere, Difensore, Centrocampista, Attaccante">
+    <div class="admin-actions"><button class="btn gold" id="pSave">Aggiungi</button></div>`;
+  document.getElementById('pSave').onclick = async ()=>{
+    const nome = document.getElementById('pNome').value.trim();
+    const numero = document.getElementById('pNum').value;
+    const ruolo = document.getElementById('pRuolo').value.trim();
+    if(!nome){ toast('Inserisci il nome','err'); return; }
+    const {error} = await sb.from('giocatori').insert({nome, numero_maglia: numero?parseInt(numero):null, ruolo});
+    if(error){ toast('Errore: '+error.message,true); return; }
+    toast('Giocatore aggiunto');
+    document.getElementById('pNome').value='';
+    document.getElementById('pNum').value='';
+    document.getElementById('pRuolo').value='';
+    await getGiocatori(true);
+  };
+}
+
+async function renderAdminAddMatch(){
+  const box = document.getElementById('adminAddMatch');
+  const giocatori = await getGiocatori();
+  box.innerHTML = `
+    <h3>Nuova partita</h3>
+    <div class="hint">Inserisci risultato, marcatori, formazione, panchina e indisponibili.</div>
+    <div class="field-row">
+      <div><label>Data</label><input id="mData" type="date"></div>
+      <div><label>Casa/Trasferta</label>
+        <select id="mCasa"><option value="casa">Casa</option><option value="trasferta">Trasferta</option></select>
+      </div>
+    </div>
+    <label>Avversario</label>
+    <input id="mAvv" placeholder="Nome squadra avversaria">
+    <label>Allenatore</label>
+    <input id="mAllenatore" placeholder="Nome dell'allenatore per questa partita">
+    <div class="field-row">
+      <div><label>Gol fatti</label><input id="mGf" type="number" min="0" value="0"></div>
+      <div><label>Gol subiti</label><input id="mGs" type="number" min="0" value="0"></div>
+    </div>
+    <label>Note (opzionale)</label>
+    <textarea id="mNote" rows="2" placeholder="Episodi, arbitro, condizioni…"></textarea>
+
+    <label>Marcatori</label>
+    <div class="hint" style="margin-bottom:8px;">Spunta i giocatori che hanno segnato e indica quanti gol.</div>
+    <div class="multi-select-list" id="mMarcatoriList">
+      ${giocatori.length ? giocatori.map(g=>`
+        <div class="ms-row">
+          <input type="checkbox" class="mk-check" data-id="${g.id}">
+          <span class="lbl">${escapeHtml(g.nome)} ${g.numero_maglia?('#'+g.numero_maglia):''}</span>
+          <input type="number" class="mk-gol" data-id="${g.id}" min="1" value="1">
+        </div>`).join('') : '<div class="hint">Aggiungi prima dei giocatori alla rosa.</div>'}
+    </div>
+
+    <label>Formazione</label>
+    <div class="hint" style="margin-bottom:8px;">Per ogni giocatore indica se era titolare, in panchina o indisponibile. Lascia "—" per chi non è coinvolto in questa partita.</div>
+    <div class="multi-select-list" id="mFormazioneList">
+      ${giocatori.length ? giocatori.map(g=>`
+        <div class="ms-row">
+          <span class="lbl">${escapeHtml(g.nome)} ${g.numero_maglia?('#'+g.numero_maglia):''}</span>
+          <select class="fm-status" data-id="${g.id}" style="width:150px;">
+            <option value="">—</option>
+            <option value="titolare">Titolare</option>
+            <option value="panchina">Panchina</option>
+            <option value="indisponibile">Indisponibile</option>
+          </select>
+        </div>`).join('') : ''}
+    </div>
+
+    <div class="admin-actions"><button class="btn gold" id="mSave">Salva partita</button></div>`;
+
+  document.getElementById('mSave').onclick = async ()=>{
+    const data = document.getElementById('mData').value;
+    const avversario = document.getElementById('mAvv').value.trim();
+    const allenatore = document.getElementById('mAllenatore').value.trim();
+    const casa_trasferta = document.getElementById('mCasa').value;
+    const gol_fatti = parseInt(document.getElementById('mGf').value||'0');
+    const gol_subiti = parseInt(document.getElementById('mGs').value||'0');
+    const note = document.getElementById('mNote').value.trim();
+    if(!data || !avversario){ toast('Inserisci almeno data e avversario','err'); return; }
+
+    const saveBtn = document.getElementById('mSave');
+    saveBtn.disabled = true; saveBtn.textContent = 'Salvataggio…';
+
+    const {data:partita, error} = await sb.from('partite')
+      .insert({data, avversario, allenatore, casa_trasferta, gol_fatti, gol_subiti, note})
+      .select().single();
+    if(error){ toast('Errore: '+error.message, true); saveBtn.disabled=false; saveBtn.textContent='Salva partita'; return; }
+
+    const marcatoriRows = [];
+    document.querySelectorAll('.mk-check:checked').forEach(cb=>{
+      const id = cb.dataset.id;
+      const golInput = document.querySelector(`.mk-gol[data-id="${id}"]`);
+      marcatoriRows.push({partita_id: partita.id, giocatore_id: id, gol: parseInt(golInput.value||'1')});
+    });
+    if(marcatoriRows.length){
+      const {error: mErr} = await sb.from('marcatori').insert(marcatoriRows);
+      if(mErr) toast('Partita salvata, ma errore sui marcatori: '+mErr.message, true);
+    }
+
+    const formazioneRows = [];
+    document.querySelectorAll('.fm-status').forEach(sel=>{
+      if(sel.value){
+        formazioneRows.push({partita_id: partita.id, giocatore_id: sel.dataset.id, stato: sel.value, titolare: sel.value==='titolare'});
+      }
+    });
+    if(formazioneRows.length){
+      const {error: fErr} = await sb.from('formazioni').insert(formazioneRows);
+      if(fErr) toast('Partita salvata, ma errore sulla formazione: '+fErr.message, true);
+    }
+
+    toast('Partita salvata!');
+    saveBtn.disabled = false; saveBtn.textContent = 'Salva partita';
+    renderAdminAddMatch();
+    renderAdminMediaUpload();
+    renderAdminMatchList();
+  };
+}
+
+async function renderAdminEditFormazione(){
+  const box = document.getElementById('adminEditFormazione');
+  const {data: partite} = await sb.from('partite').select('id, data, avversario').order('data',{ascending:false});
+  box.innerHTML = `
+    <h3>Modifica formazione di una partita</h3>
+    <div class="hint">Cambia chi era titolare, in panchina o indisponibile per una partita già salvata.</div>
+    <label>Partita</label>
+    <select id="efPartita">
+      <option value="">Scegli una partita…</option>
+      ${(partite||[]).map(p=>`<option value="${p.id}">${formatData(p.data)} — ${escapeHtml(p.avversario)}</option>`).join('')}
+    </select>
+    <div id="efPlayerList"></div>`;
+
+  document.getElementById('efPartita').addEventListener('change', async (e)=>{
+    const partitaId = e.target.value;
+    const listBox = document.getElementById('efPlayerList');
+    if(!partitaId){ listBox.innerHTML = ''; return; }
+    listBox.innerHTML = '<div class="hint" style="margin-top:14px;">Caricamento…</div>';
+
+    const [giocatori, {data: existing}] = await Promise.all([
+      getGiocatori(),
+      sb.from('formazioni').select('giocatore_id, stato, titolare').eq('partita_id', partitaId)
+    ]);
+    const statoMap = {};
+    (existing||[]).forEach(r=>{
+      statoMap[r.giocatore_id] = r.stato || (r.titolare ? 'titolare' : 'panchina');
+    });
+
+    listBox.innerHTML = `
+      <label>Formazione</label>
+      <div class="multi-select-list" id="efFormazioneList">
+        ${giocatori.length ? giocatori.map(g=>`
+          <div class="ms-row">
+            <span class="lbl">${escapeHtml(g.nome)} ${g.numero_maglia?('#'+g.numero_maglia):''}</span>
+            <select class="ef-status" data-id="${g.id}" style="width:150px;">
+              <option value="" ${!statoMap[g.id]?'selected':''}>—</option>
+              <option value="titolare" ${statoMap[g.id]==='titolare'?'selected':''}>Titolare</option>
+              <option value="panchina" ${statoMap[g.id]==='panchina'?'selected':''}>Panchina</option>
+              <option value="indisponibile" ${statoMap[g.id]==='indisponibile'?'selected':''}>Indisponibile</option>
+            </select>
+          </div>`).join('') : '<div class="hint">Nessun giocatore in rosa.</div>'}
+      </div>
+      <div class="admin-actions"><button class="btn gold" id="efSave">Salva formazione</button></div>`;
+
+    document.getElementById('efSave').onclick = async ()=>{
+      const btn = document.getElementById('efSave');
+      btn.disabled = true; btn.textContent = 'Salvataggio…';
+
+      const {error: delErr} = await sb.from('formazioni').delete().eq('partita_id', partitaId);
+      if(delErr){ toast('Errore: '+delErr.message, true); btn.disabled=false; btn.textContent='Salva formazione'; return; }
+
+      const rows = [];
+      document.querySelectorAll('.ef-status').forEach(sel=>{
+        if(sel.value){
+          rows.push({partita_id: partitaId, giocatore_id: sel.dataset.id, stato: sel.value, titolare: sel.value==='titolare'});
+        }
+      });
+      if(rows.length){
+        const {error: insErr} = await sb.from('formazioni').insert(rows);
+        if(insErr){ toast('Errore: '+insErr.message, true); btn.disabled=false; btn.textContent='Salva formazione'; return; }
+      }
+      toast('Formazione aggiornata!');
+      btn.disabled = false; btn.textContent = 'Salva formazione';
+    };
+  });
+}
+
+async function renderAdminMediaUpload(){
+  const box = document.getElementById('adminMedia');
+  const {data: partite} = await sb.from('partite').select('id, data, avversario').order('data',{ascending:false});
+  box.innerHTML = `
+    <h3>Carica foto o video</h3>
+    <div class="hint">Associa foto/video a una partita già salvata. Avviso oltre ${CONFIG.PHOTO_WARN_MB}MB (foto) o ${CONFIG.VIDEO_WARN_MB}MB (video) — il caricamento resta comunque possibile.</div>
+    <label>Partita</label>
+    <select id="medPartita">
+      ${(partite||[]).map(p=>`<option value="${p.id}">${formatData(p.data)} — ${escapeHtml(p.avversario)}</option>`).join('')}
+    </select>
+    <label>File (foto o video)</label>
+    <input id="medFile" type="file" accept="image/*,video/*">
+    <div id="medWarn"></div>
+    <label>Didascalia (opzionale)</label>
+    <input id="medCaption" placeholder="es. Gol del 2-1">
+    <div class="admin-actions"><button class="btn gold" id="medSave" ${(!partite||!partite.length)?'disabled':''}>Carica</button></div>`;
+
+  const fileInput = document.getElementById('medFile');
+  fileInput.addEventListener('change', ()=>{
+    const f = fileInput.files[0];
+    const warnBox = document.getElementById('medWarn');
+    warnBox.innerHTML = '';
+    if(!f) return;
+    const sizeMB = f.size / (1024*1024);
+    const isVideo = f.type.startsWith('video');
+    const limit = isVideo ? CONFIG.VIDEO_WARN_MB : CONFIG.PHOTO_WARN_MB;
+    if(sizeMB > limit){
+      warnBox.innerHTML = `<div class="file-warn big">File di ${sizeMB.toFixed(1)}MB — supera i ${limit}MB consigliati. Il caricamento potrebbe essere lento o consumare molto spazio gratuito su Supabase. Considera di comprimerlo.</div>`;
+    }
+  });
+
+  document.getElementById('medSave').onclick = async ()=>{
+    const partitaId = document.getElementById('medPartita').value;
+    const file = fileInput.files[0];
+    const caption = document.getElementById('medCaption').value.trim();
+    if(!file){ toast('Scegli un file','err'); return; }
+    const btn = document.getElementById('medSave');
+    btn.disabled = true; btn.textContent = 'Caricamento…';
+
+    const isVideo = file.type.startsWith('video');
+    const ext = file.name.split('.').pop();
+    const path = `${partitaId}/${Date.now()}.${ext}`;
+
+    const {error: upErr} = await sb.storage.from(CONFIG.MEDIA_BUCKET).upload(path, file);
+    if(upErr){ toast('Errore upload: '+upErr.message, true); btn.disabled=false; btn.textContent='Carica'; return; }
+
+    const {data: pub} = sb.storage.from(CONFIG.MEDIA_BUCKET).getPublicUrl(path);
+    const {error: dbErr} = await sb.from('media').insert({
+      partita_id: partitaId, tipo: isVideo?'video':'foto', url: pub.publicUrl, didascalia: caption
+    });
+    if(dbErr){ toast('File caricato ma errore nel salvarlo: '+dbErr.message, true); btn.disabled=false; btn.textContent='Carica'; return; }
+
+    toast('Media caricato!');
+    fileInput.value = '';
+    document.getElementById('medCaption').value = '';
+    document.getElementById('medWarn').innerHTML = '';
+    btn.disabled = false; btn.textContent = 'Carica';
+  };
+}
+
+async function renderAdminMatchList(){
+  const box = document.getElementById('adminMatchList');
+  const {data: partite} = await sb.from('partite').select('*').order('data',{ascending:false});
+  box.innerHTML = `<h3>Partite salvate</h3><div class="hint">Elimina una partita rimuove anche marcatori, formazione e media collegati.</div>` +
+    (partite && partite.length ? partite.map(p=>`
+      <div class="admin-list-row">
+        <span>${formatData(p.data)} — ${escapeHtml(p.avversario)} (${p.gol_fatti}-${p.gol_subiti})</span>
+        <button class="btn danger" data-del="${p.id}" style="padding:5px 10px;font-size:12.5px;">Elimina</button>
+      </div>`).join('') : '<div class="hint">Nessuna partita ancora.</div>');
+
+  box.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      if(!confirm('Eliminare questa partita e tutti i dati collegati?')) return;
+      const {error} = await sb.from('partite').delete().eq('id', btn.dataset.del);
+      if(error){ toast('Errore: '+error.message, true); return; }
+      toast('Partita eliminata');
+      renderAdminMatchList();
+    };
+  });
+}
+</script>
+</body>
+</html>
